@@ -6,10 +6,13 @@ import {
   PermissionsAndroid,
   SafeAreaView,
   TouchableOpacity,
+  FlatList,
 } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import { AnimatedCircularProgress } from 'react-native-circular-progress';
 import { LineChart } from 'react-native-chart-kit';
+import io from 'socket.io-client';
+import socketServices from './src/utils/socketservice';
 
 const bleManager = new BleManager();
 
@@ -20,8 +23,9 @@ const generateRandomSteps = () => {
 
 // Function to generate random graph data
 const generateRandomGraphData = () => {
-  return Array.from({ length: 7 }, () => Math.floor(Math.random() * 100)); // Generates an array of 7 random numbers between 0 and 100
+  return Array.from({ length: 7 }, () => Math.floor(Math.random() * 61)); // Generates an array of 7 random numbers between 0 and 60 (inclusive)
 };
+
 
 // Android Bluetooth Permission
 async function requestLocationPermission() {
@@ -57,23 +61,25 @@ export default function App() {
   const [stepCount, setStepCount] = useState(generateRandomSteps());
   const [connectionStatus, setConnectionStatus] = useState('Searching...');
   const [selectedExercise, setSelectedExercise] = useState(1);
+  const [showData, setShowData] = useState(false);
+  const [sensorData, setSensorData] = useState([]);
   const [selectedGraph, setSelectedGraph] = useState('temperature');
   const [graphData, setGraphData] = useState(generateRandomGraphData());
 
   const exercises = [
     [
       'Exercise 1:',
-      'Step 1: Warm-up',
-      'Step 2: Cardio',
-      'Step 3: Strength Training',
-      'Step 4: Cool Down',
+      'Step 1: Warm-up and stretching should be done in a proper way',
+      'Step 2: The movement of the knee should be made in a rythmic pattern trying to make an angle of 45 degrees',
+      'Step 3: The knee should be moved up and down atleast 50 times',
+      'Step 4: Proper rest should be taken',
     ],
     [
       'Exercise 2:',
-      'Step 1: Stretching',
-      'Step 2: High-Intensity Interval Training (HIIT)',
-      'Step 3: Resistance Band Workout',
-      'Step 4: Flexibility Exercises',
+      'Step 1: Stretching and warm up should be done consciously',
+      'Step 2: The movement of the knee should be made in a rythmic pattern trying to make an angle of 45 degrees',
+      'Step 3: The knee should be moved up and down atleast 75 times',
+      'Step 4: After the exercise is done, proper rest should be taken',
     ],
   ];
   
@@ -162,6 +168,7 @@ export default function App() {
 
   const handleExerciseChange = (exerciseNumber) => {
     setSelectedExercise(exerciseNumber);
+    setShowData(false);
     // Fetch data for the selected exercise and update the graph accordingly
     setGraphData(generateRandomGraphData());
   };
@@ -191,6 +198,28 @@ export default function App() {
     'Step 4: Cool Down',
   ];
 
+  useEffect(() => {
+		socketServices.initializeSocket();
+
+		socketServices.on('sensorData', (data) => {
+			console.log('Received sensor data from server:', data);
+			setSensorData((prevData) => [...prevData, data]);
+		});
+	}, []);
+
+  const flatListRef = useRef(null);
+
+  useEffect(() => {
+    if (flatListRef.current) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  }, [sensorData]);
+
+  const formatSensorData = (data) => {
+    const spacedData = data.split(',').map((num) => num.trim()).join(',  ');
+    return spacedData;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.contentWrapper}>
@@ -217,90 +246,117 @@ export default function App() {
             >
               <Text style={styles.exerciseButtonText}>Exercise 2</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.exerciseButton,
+                selectedExercise === 3 && styles.activeButton,
+              ]}
+              onPress={() => {
+                setSelectedExercise(3);
+                setShowData(true);
+              }}
+            >
+              <Text style={styles.exerciseButtonText}>Data</Text>
+            </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.circularProgressWrapper}>
-          {/* <AnimatedCircularProgress
-            size={280}
-            width={15}
-            fill={progress}
-            lineCap="round"
-            tintColor={
-              progress >= 100 ? '#FB975C' : progress >= 50 ? '#EF664C' : '#FFF386'
-            }
-            backgroundColor="#3d5875"
-          >
-            {(fill) => (
-              <>
-                <Text style={styles.steps}>{exerciseSteps[selectedExercise - 1]}</Text>
-                <Text style={styles.percent}>{`${Math.round(fill)}%`}</Text>
-              </>
-            )}
-          </AnimatedCircularProgress> */}
-          {exercises[selectedExercise - 1].map((step) => (
-            <Text key={step} style={styles.exerciseStep}>{step}</Text>
-          ))}
-        </View>
-        <View style={styles.graphWrapper}>
-          <LineChart
-            data={{
-              labels: ['1sec', '3sec', '5sec', '7sec', '9sec', '11sec', '13sec'],
-              datasets: [
-                {
-                  data: graphData,
-                },
-              ],
-            }}
-            width={350}
-            height={220}
-            yAxisSuffix="°"
-            chartConfig={{
-              backgroundColor: '#FFF',
-              backgroundGradientFrom: '#FFF',
-              backgroundGradientTo: '#FFF',
-              decimalPlaces: 2,
-              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              style: {
-                borderRadius: 16,
-              },
-              propsForDots: {
-                r: '6',
-                strokeWidth: '2',
-                stroke: '#ffa726',
-              },
-            }}
-          />
-        </View>
-        <View style={styles.bottomWrapper}>
-          <TouchableOpacity
-            style={[
-              styles.bottomButton,
-              selectedGraph === 'temperature' && styles.activeBottomButton,
-            ]}
-            onPress={() => handleGraphChange('temperature')}
-          >
-            <Text style={styles.bottomButtonText}>Temperature</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.bottomButton,
-              selectedGraph === 'force' && styles.activeBottomButton,
-            ]}
-            onPress={() => handleGraphChange('force')}
-          >
-            <Text style={styles.bottomButtonText}>Force</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.bottomButton,
-              selectedGraph === 'angle' && styles.activeBottomButton,
-            ]}
-            onPress={() => handleGraphChange('angle')}
-          >
-            <Text style={styles.bottomButtonText}>Angle</Text>
-          </TouchableOpacity>
-        </View>
+        {showData && (
+          <View style={{ height: 500, width: 300, marginTop: 50 }}>
+            <Text>GSR, Angle, Force, Knee Temp(°C)</Text>
+            <FlatList
+              ref={flatListRef}
+              data={sensorData}
+              keyExtractor={(item, index) => `${item.time}-${item.voltage}-${index}`}
+              renderItem={({item}) => <Text>{formatSensorData(item.voltage)}</Text>}
+            />
+          </View>
+        )}
+        {!showData && (
+          <>
+            <View style={styles.circularProgressWrapper}>
+              {/* <AnimatedCircularProgress
+                size={280}
+                width={15}
+                fill={progress}
+                lineCap="round"
+                tintColor={
+                  progress >= 100 ? '#FB975C' : progress >= 50 ? '#EF664C' : '#FFF386'
+                }
+                backgroundColor="#3d5875"
+              >
+                {(fill) => (
+                  <>
+                    <Text style={styles.steps}>{exerciseSteps[selectedExercise - 1]}</Text>
+                    <Text style={styles.percent}>{`${Math.round(fill)}%`}</Text>
+                  </>
+                )}
+              </AnimatedCircularProgress> */}
+              {exercises[selectedExercise - 1].map((step) => (
+                <Text key={step} style={styles.exerciseStep}>{step}</Text>
+              ))}
+            </View>
+            <View style={styles.graphWrapper}>
+              <LineChart
+                data={{
+                  labels: ['1sec', '3sec', '5sec', '7sec', '9sec', '11sec', '13sec'],
+                  datasets: [
+                    {
+                      data: graphData,
+                    },
+                  ],
+                }}
+                width={350}
+                height={220}
+                yAxisSuffix="°"
+                chartConfig={{
+                  backgroundColor: '#FFF',
+                  backgroundGradientFrom: '#FFF',
+                  backgroundGradientTo: '#FFF',
+                  decimalPlaces: 2,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  style: {
+                    borderRadius: 16,
+                  },
+                  propsForDots: {
+                    r: '6',
+                    strokeWidth: '2',
+                    stroke: '#ffa726',
+                  },
+                }}
+              />
+            </View>
+            <View style={styles.bottomWrapper}>
+              <TouchableOpacity
+                style={[
+                  styles.bottomButton,
+                  selectedGraph === 'temperature' && styles.activeBottomButton,
+                ]}
+                onPress={() => handleGraphChange('temperature')}
+              >
+                <Text style={styles.bottomButtonText}>Temperature</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.bottomButton,
+                  selectedGraph === 'force' && styles.activeBottomButton,
+                ]}
+                onPress={() => handleGraphChange('force')}
+              >
+                <Text style={styles.bottomButtonText}>Force</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.bottomButton,
+                  selectedGraph === 'angle' && styles.activeBottomButton,
+                ]}
+                onPress={() => handleGraphChange('angle')}
+              >
+                <Text style={styles.bottomButtonText}>Angle</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
       <View style={styles.bottomWrapper}>
         <Text style={styles.connectionStatus}>{connectionStatus}</Text>
@@ -319,11 +375,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 40,
+    paddingTop: 20,
+    marginTop: 0,
     width: '100%',
   },
   topTitle: {
-    paddingVertical: 20,
+    paddingVertical: 0,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
@@ -364,7 +421,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   exerciseStep: {
-    fontSize: 20,
+    fontSize: 18,
     color: 'black',
   },
   steps: {
